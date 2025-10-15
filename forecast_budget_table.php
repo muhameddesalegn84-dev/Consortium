@@ -622,19 +622,21 @@ foreach ($section3Categories as $categoryName => $quarters) {
     $annualActual = 0.0;
     $annualActualPlusForecast = 0.0;
 
-    foreach ($orderedQuarters as $q) {
-        $row = $quarters[$q] ?? null;
-        if ($row === null) { continue; }
-        $annualBudget += floatval($row['budget'] ?? 0);
-        // Always sum Actual for variance calculation
+foreach ($orderedQuarters as $q) {
+    $row = $quarters[$q] ?? null;
+    if ($row === null) { continue; }
+    $annualBudget += floatval($row['budget'] ?? 0);
+    // Sum Actual only for past quarters that are displayed as Actual in the UI
+    if (in_array($q, $actualDisplayQuarters, true)) {
         $annualActual += floatval($row['actual'] ?? 0);
-        // Preserve display of Actual+Forecast using the new rule: only past quarter counts as Actual
-        if (in_array($q, $actualDisplayQuarters, true)) {
-            $annualActualPlusForecast += floatval($row['actual'] ?? 0);
-        } else {
-            $annualActualPlusForecast += floatval($row['forecast'] ?? 0);
-        }
     }
+    // Keep computing display helper: past quarter uses Actual, current/future use Forecast
+    if (in_array($q, $actualDisplayQuarters, true)) {
+        $annualActualPlusForecast += floatval($row['actual'] ?? 0);
+    } else {
+        $annualActualPlusForecast += floatval($row['forecast'] ?? 0);
+    }
+}
 
     // Variance (%) = (Budget − Actual) / Budget × 100
     $variance = ($annualBudget != 0) ? round((($annualBudget - $annualActual) / abs($annualBudget)) * 100, 2) : 0;
@@ -1867,7 +1869,7 @@ if (!$included):
                 <?php endif; ?>
               <?php endforeach; ?>
               <th>Budget</th>
-              <th>Actual + Forecast</th>
+              <th>Actual</th>
               <th>Variance (%)</th>
             </tr>
           </thead>
@@ -1899,7 +1901,7 @@ if (!$included):
       <?php endif; ?>
     <?php endforeach; ?>
     <td data-label="Annual Budget"><?php echo $annualTotal && isset($annualTotal['budget']) ? formatCurrency($annualTotal['budget'], $selectedCurrency) : '-'; ?></td>
-    <td data-label="Actual + Forecast"><?php echo $annualTotal && isset($annualTotal['actual_plus_forecast']) ? formatCurrency($annualTotal['actual_plus_forecast'], $selectedCurrency) : '-'; ?></td>
+    <td data-label="Annual Actual"><?php echo $annualTotal && isset($annualTotal['actual']) ? formatCurrency($annualTotal['actual'], $selectedCurrency) : '-'; ?></td>
     <td data-label="Variance">
         <?php
         $variance = $annualTotal && isset($annualTotal['variance_percentage']) ? $annualTotal['variance_percentage'] : 0;
@@ -2898,8 +2900,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Initialize totals using displayed columns only
         let q3BudgetTotal = 0, q4BudgetTotal = 0, q1BudgetTotal = 0, q2BudgetTotal = 0;
-        let actualOnlyTotal = 0, displayedAFTotal = 0;
-        let annualBudgetTotal = 0;
+        let annualBudgetTotal = 0, annualActualTotal = 0;
 
         // Find all rows except the header and Grand Total
         const rows = table.querySelectorAll('tbody tr:not(.grand-total-section)');
@@ -2911,21 +2912,15 @@ document.addEventListener('DOMContentLoaded', function() {
           q3BudgetTotal += q3Budget; q4BudgetTotal += q4Budget; q1BudgetTotal += q1Budget; q2BudgetTotal += q2Budget;
           annualBudgetTotal += (q3Budget + q4Budget + q1Budget + q2Budget);
 
-          ['Q3','Q4','Q1','Q2'].forEach(q => {
-            const actualCell = row.querySelector(`td[data-label="${q} Actual"]`);
-            const forecastCell = row.querySelector(`td[data-label="${q} Forecast"]`);
-            const actualVal = actualCell ? (parseFloat(actualCell.textContent.replace(/[^0-9.-]/g, '')) || 0) : 0;
-            const forecastVal = forecastCell ? (parseFloat(forecastCell.textContent.replace(/[^0-9.-]/g, '')) || 0) : 0;
-            if (actualCell) actualOnlyTotal += actualVal;
-            displayedAFTotal += actualCell ? actualVal : forecastVal;
-          });
+          // Read the per-row annual actual that we render in the Annual column
+          const rowAnnualActual = parseFloat((row.querySelector('td[data-label="Annual Actual"]')?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+          annualActualTotal += rowAnnualActual;
         });
 
         // Calculate variance using selected formula
         let variance = 0;
         if (annualBudgetTotal !== 0) {
-          const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? displayedAFTotal : actualOnlyTotal;
-          variance = (((annualBudgetTotal - compareAgainst) / annualBudgetTotal) * 100);
+          variance = (((annualBudgetTotal - annualActualTotal) / annualBudgetTotal) * 100);
         }
 
         // Determine variance class based on global financial standards
@@ -2946,10 +2941,7 @@ document.addEventListener('DOMContentLoaded', function() {
         grandTotalRow.innerHTML = `
           <td class="grand-total-label">Grand Total</td>
           <td>${q3BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${(function(){
-            // Sum displayed value for Q3 second column (Actual if present else Forecast)
-            let sum = 0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q3 Actual"]'); const f=row.querySelector('td[data-label="Q3 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum;
-          })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td>${(function(){ let sum=0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q3 Actual"]'); const f=row.querySelector('td[data-label="Q3 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum; })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${q4BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${(function(){ let sum=0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q4 Actual"]'); const f=row.querySelector('td[data-label="Q4 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum; })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${q1BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
@@ -2957,7 +2949,7 @@ document.addEventListener('DOMContentLoaded', function() {
           <td>${q2BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${(function(){ let sum=0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q2 Actual"]'); const f=row.querySelector('td[data-label="Q2 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum; })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${annualBudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${displayedAFTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td>${annualActualTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td><span class="${varianceClass}">${variance.toFixed(2)}%</span></td>
         `;
         table.querySelector('tbody').appendChild(grandTotalRow);
@@ -3112,7 +3104,7 @@ document.addEventListener('DOMContentLoaded', function() {
         q4Budget: 0, q4Actual: 0,
         q1Budget: 0, q1Forecast: 0,
         q2Budget: 0, q2Forecast: 0,
-        annualBudget: 0, actualForecast: 0
+        annualBudget: 0, annualActual: 0
       };
       rows.forEach(row => {
         totals.q3Budget += parseFloat(row.querySelector('td[data-label="Q3 Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
@@ -3124,15 +3116,12 @@ document.addEventListener('DOMContentLoaded', function() {
         totals.q2Budget += parseFloat(row.querySelector('td[data-label="Q2 Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
         totals.q2Forecast += parseFloat(row.querySelector('td[data-label="Q2 Forecast"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
         totals.annualBudget += parseFloat(row.querySelector('td[data-label="Annual Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
-        totals.actualForecast += parseFloat(row.querySelector('td[data-label="Actual + Forecast"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.annualActual += parseFloat(row.querySelector('td[data-label=\"Annual Actual\"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
       });
-      // Calculate variance using currently selected formula
+      // Calculate variance using Actual only
       let variance = 0;
       if (totals.annualBudget !== 0) {
-        const actualOnly = totals.q3Actual + totals.q4Actual;
-        const actualPlusForecast = totals.q3Actual + totals.q4Actual + totals.q1Forecast + totals.q2Forecast;
-        const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? actualPlusForecast : actualOnly;
-        variance = (((totals.annualBudget - compareAgainst) / totals.annualBudget) * 100);
+        variance = (((totals.annualBudget - totals.annualActual) / totals.annualBudget) * 100);
       }
       return [
         'Grand Total',
@@ -3140,7 +3129,7 @@ document.addEventListener('DOMContentLoaded', function() {
         totals.q4Budget, totals.q4Actual,
         totals.q1Budget, totals.q1Forecast,
         totals.q2Budget, totals.q2Forecast,
-        totals.annualBudget, totals.actualForecast,
+        totals.annualBudget, totals.annualActual,
         variance.toFixed(2) + '%'
       ];
     }
@@ -3252,15 +3241,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Calculate annual totals
       const annualBudget = q3Budget + q4Budget + q1Budget + q2Budget;
-      const actualForecast = q3Actual + q4Actual + q1Forecast + q2Forecast;
+      const annualActual = q3Actual + q4Actual; // use Actuals only for past quarters
 
-      // Calculate variance using selected formula
+      // Calculate variance: (Budget - Annual Actual) / Budget * 100
       let variance = 0;
       if (annualBudget !== 0) {
-        const actualOnly = q3Actual + q4Actual;
-        const actualPlusForecast = q3Actual + q4Actual + q1Forecast + q2Forecast;
-        const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? actualPlusForecast : actualOnly;
-        variance = ((annualBudget - compareAgainst) / annualBudget) * 100;
+        variance = ((annualBudget - annualActual) / annualBudget) * 100;
       }
       let varianceClass = 'variance-zero';
       if (variance > 0) varianceClass = 'variance-positive';
@@ -3268,7 +3254,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Fill annual totals columns
       row.querySelector('td[data-label="Annual Budget"]').textContent = annualBudget.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
-      row.querySelector('td[data-label="Actual + Forecast"]').textContent = actualForecast.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+      row.querySelector('td[data-label="Annual Actual"]').textContent = annualActual.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
       row.querySelector('td[data-label="Variance"]').innerHTML = `<span class="${varianceClass}">${variance.toFixed(2)}%</span>`;
     });
   }
