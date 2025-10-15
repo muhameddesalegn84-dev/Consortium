@@ -1668,18 +1668,17 @@ if (!$included):
 
         <div class="filter-section">
           <div class="filter-title">
-            <i class="fas fa-calculator"></i> Variance Formula
+            <i class="fas fa-percent"></i> Variance Formula
           </div>
-          <div class="relative">
-            <select id="varianceFormula" class="w-full appearance-none bg-white border border-gray-300 rounded-lg py-3 pl-4 pr-10 text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-500 transition duration-150 ease-in-out" style="width: 100%; padding: 8px 12px; border: 1px solid #dee2e6; border-radius: 4px; font-size: 14px;">
-              <option value="budget_vs_actual" selected>Budget vs Actual</option>
-              <option value="budget_vs_actual_forecast">Budget vs Actual + Forecast</option>
-            </select>
-            <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-500" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); pointer-events: none;">
-              <svg class="h-5 w-5" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" style="width: 16px; height: 16px;">
-                <path fill-rule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clip-rule="evenodd" />
-              </svg>
-            </div>
+          <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+            <label style="display: flex; align-items: center; gap: 6px;">
+              <input type="radio" name="varianceFormula" value="budget_actual" checked>
+              <span>Budget vs Actual (Default)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px;">
+              <input type="radio" name="varianceFormula" value="budget_actual_forecast">
+              <span>Budget vs Actual + Forecast</span>
+            </label>
           </div>
         </div>
 
@@ -1753,6 +1752,7 @@ if (!$included):
                 echo '<td>' . formatCurrency($grandTotalCalculated['actual'], $selectedCurrency) . '</td>';
                 echo '<td>' . formatCurrency($grandTotalCalculated['forecast'], $selectedCurrency) . '</td>';
                 echo '<td>' . formatCurrency($grandTotalCalculated['actual_plus_forecast'], $selectedCurrency) . '</td>';
+                // Default display uses Budget vs Actual; JS toggle will override dynamically
                 $grandTotalVariance = ($grandTotalCalculated['budget'] != 0) ? round((($grandTotalCalculated['budget'] - $grandTotalCalculated['actual']) / abs($grandTotalCalculated['budget'])) * 100, 2) : 0;
                 $varianceClass = $grandTotalVariance > 0 ? 'variance-positive' : ($grandTotalVariance < 0 ? 'variance-negative' : 'variance-zero');
                 echo '<td class="' . $varianceClass . '">' . $grandTotalVariance . '%</td>';
@@ -2858,9 +2858,32 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize with default year
     updatePageTitle('2025');
 
+    // Variance Formula toggle state
+    let varianceFormula = 'budget_actual'; // 'budget_actual' (default) or 'budget_actual_forecast'
+
+    // Initialize from any pre-selected radio input if present
+    (function initializeVarianceFormulaFromUI() {
+      const selectedRadio = document.querySelector('input[name="varianceFormula"]:checked');
+      if (selectedRadio && (selectedRadio.value === 'budget_actual' || selectedRadio.value === 'budget_actual_forecast')) {
+        varianceFormula = selectedRadio.value;
+      }
+    })();
+
+    // Hook up toggle
+    document.querySelectorAll('input[name="varianceFormula"]').forEach(r => {
+      r.addEventListener('change', () => {
+        varianceFormula = r.value;
+        // Recompute variances on both tables
+        if (typeof window.calculateTable1GrandTotal === 'function') window.calculateTable1GrandTotal();
+        if (typeof window.calculateTable2GrandTotal === 'function') window.calculateTable2GrandTotal();
+        if (typeof window.fillTable2AnnualTotals === 'function') window.fillTable2AnnualTotals();
+      });
+    });
+
     // Front-end Grand Total calculation for Table 2
     document.addEventListener('DOMContentLoaded', function() {
-      function calculateTable2GrandTotal() {
+      // Expose function globally so other listeners (like variance toggle) can call it
+      window.calculateTable2GrandTotal = function() {
         const table = document.querySelector('#section3-table .vertical-table');
         if (!table) return;
         
@@ -2925,11 +2948,13 @@ document.addEventListener('DOMContentLoaded', function() {
           }
         });
 
-        // Calculate variance using (Budget - Actual) / Budget * 100
+        // Calculate variance using selected formula
         let variance = 0;
         if (annualBudgetTotal != 0) {
-          const actualTotal = q3ActualTotal + q4ActualTotal;
-          variance = (((annualBudgetTotal - actualTotal) / annualBudgetTotal) * 100);
+          const actualOnly = q3ActualTotal + q4ActualTotal;
+          const actualPlusForecast = actualForecastTotal; // already Q3A+Q4A+Q1F+Q2F
+          const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? actualPlusForecast : actualOnly;
+          variance = (((annualBudgetTotal - compareAgainst) / annualBudgetTotal) * 100);
         }
 
         // Determine variance class based on global financial standards
@@ -2966,24 +2991,25 @@ document.addEventListener('DOMContentLoaded', function() {
 
       // Run on load and when switching tables
 
-      calculateTable2GrandTotal();
+      window.calculateTable2GrandTotal();
       document.getElementById('tableSelection').addEventListener('change', function() {
         if (this.value === 'section3') {
-          setTimeout(calculateTable2GrandTotal, 100); // Wait for table to show
+          setTimeout(window.calculateTable2GrandTotal, 100); // Wait for table to show
         }
       });
       
       // Also recalculate when year changes
       document.getElementById('yearFilter').addEventListener('change', function() {
         if (document.getElementById('tableSelection').value === 'section3') {
-          setTimeout(calculateTable2GrandTotal, 100);
+          setTimeout(window.calculateTable2GrandTotal, 100);
         }
       });
     });
 
     // Add after Table 1 rendering (inside <script> tag)
     document.addEventListener('DOMContentLoaded', function() {
-      function calculateTable1GrandTotal() {
+      // Expose function globally so other listeners (like variance toggle) can call it
+      window.calculateTable1GrandTotal = function() {
         const table = document.querySelector('#section2-table .vertical-table');
         if (!table) return;
 
@@ -3014,21 +3040,15 @@ document.addEventListener('DOMContentLoaded', function() {
             grandForecast += parseFloat((cells[forecastIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
             grandActualForecast += parseFloat((cells[actualForecastIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
           }
-        }
+        });
 
-        // Get selected variance formula
-        const varianceFormula = document.getElementById('varianceFormula').value;
-        
-        // Calculate variance based on selected formula
+        // Calculate variance using selected formula
         let variance = 0;
         if (grandBudget != 0) {
-          if (varianceFormula === 'budget_vs_actual_forecast') {
-            // Use (Budget - (Actual + Forecast)) / Budget * 100
-            variance = (((grandBudget - grandActualForecast) / grandBudget) * 100);
-          } else {
-            // Default: (Budget - Actual) / Budget * 100
-            variance = (((grandBudget - grandActual) / grandBudget) * 100);
-          }
+          const compareAgainst = (typeof varianceFormula !== 'undefined' && varianceFormula === 'budget_actual_forecast')
+            ? grandActualForecast
+            : grandActual;
+          variance = (((grandBudget - compareAgainst) / grandBudget) * 100);
         }
         let varianceClass = 'variance-zero';
         if (variance > 0) varianceClass = 'variance-positive';
@@ -3053,146 +3073,93 @@ document.addEventListener('DOMContentLoaded', function() {
         table.querySelector('tbody').appendChild(grandTotalRow);
       }
 
-      calculateTable1GrandTotal();
+      window.calculateTable1GrandTotal();
       // Recalculate if table changes (add listeners if needed)
     });
 
-    // Variance formula toggle functionality
-    document.addEventListener('DOMContentLoaded', function() {
-      const varianceFormulaSelect = document.getElementById('varianceFormula');
-      
-      if (varianceFormulaSelect) {
-        varianceFormulaSelect.addEventListener('change', function() {
-          // Recalculate all variances in both tables
-          updateAllVariances();
-        });
+    function getTable2ExportData() {
+      const table = document.querySelector('#section3-table .vertical-table');
+      if (!table) return [];
+      const rows = table.querySelectorAll('tbody tr:not(.grand-total-section)');
+      let totals = {
+        q3Budget: 0, q3Actual: 0,
+        q4Budget: 0, q4Actual: 0,
+        q1Budget: 0, q1Forecast: 0,
+        q2Budget: 0, q2Forecast: 0,
+        annualBudget: 0, actualForecast: 0
+      };
+      rows.forEach(row => {
+        totals.q3Budget += parseFloat(row.querySelector('td[data-label="Q3 Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.q3Actual += parseFloat(row.querySelector('td[data-label="Q3 Actual"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.q4Budget += parseFloat(row.querySelector('td[data-label="Q4 Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.q4Actual += parseFloat(row.querySelector('td[data-label="Q4 Actual"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.q1Budget += parseFloat(row.querySelector('td[data-label="Q1 Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.q1Forecast += parseFloat(row.querySelector('td[data-label="Q1 Forecast"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.q2Budget += parseFloat(row.querySelector('td[data-label="Q2 Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.q2Forecast += parseFloat(row.querySelector('td[data-label="Q2 Forecast"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.annualBudget += parseFloat(row.querySelector('td[data-label="Annual Budget"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+        totals.actualForecast += parseFloat(row.querySelector('td[data-label="Actual + Forecast"]').textContent.replace(/[^0-9.-]/g, '')) || 0;
+      });
+      // Calculate variance using currently selected formula
+      let variance = 0;
+      if (totals.annualBudget !== 0) {
+        const actualOnly = totals.q3Actual + totals.q4Actual;
+        const actualPlusForecast = totals.q3Actual + totals.q4Actual + totals.q1Forecast + totals.q2Forecast;
+        const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? actualPlusForecast : actualOnly;
+        variance = (((totals.annualBudget - compareAgainst) / totals.annualBudget) * 100);
       }
-      
-      // Function to update all variances based on selected formula
-      function updateAllVariances() {
-        const varianceFormula = document.getElementById('varianceFormula').value;
-        
-        // Update Table 1 variances
-        updateTable1Variances(varianceFormula);
-        
-        // Update Table 2 variances
-        updateTable2Variances(varianceFormula);
-        
-        // Update metric cards if needed
-        updateMetricCardsFromTable1();
-      }
-      
-      // Update variances in Table 1
-      function updateTable1Variances(formula) {
-        const table = document.querySelector('#section2-table .vertical-table');
-        if (!table) return;
-        
-        // Update Annual Total rows in Table 1
-        const rows = table.querySelectorAll('tbody tr');
-        rows.forEach(row => {
-          // Skip the dynamic Grand Total row for now, we'll recalculate it separately
-          if (row.classList.contains('grand-total-section')) return;
+      return [
+        'Grand Total',
+        totals.q3Budget, totals.q3Actual,
+        totals.q4Budget, totals.q4Actual,
+        totals.q1Budget, totals.q1Forecast,
+        totals.q2Budget, totals.q2Forecast,
+        totals.annualBudget, totals.actualForecast,
+        variance.toFixed(2) + '%'
+      ];
+    }
 
-          const cells = Array.from(row.querySelectorAll('td'));
-          if (cells.length === 0) return;
+    function exportTable2ToCSV() {
+  const table = document.querySelector('#section3-table .vertical-table');
+  if (!table) return;
 
-          const hasCategoryCell = (cells.length === 7);
-          const periodCellIndex = hasCategoryCell ? 1 : 0;
-          const budgetIndex = hasCategoryCell ? 2 : 1;
-          const actualIndex = hasCategoryCell ? 3 : 2;
-          const forecastIndex = hasCategoryCell ? 4 : 3;
-          const actualForecastIndex = hasCategoryCell ? 5 : 4;
-          const varianceIndex = hasCategoryCell ? 6 : 5;
+  // Ensure Grand Total is calculated and present
+  if (!table.querySelector('tr.grand-total-section')) {
+    // If not present, calculate and append
+    if (typeof calculateTable2GrandTotal === 'function') calculateTable2GrandTotal();
+  }
 
-          const period = cells[periodCellIndex].textContent.trim();
-          if (period === 'Annual Total') {
-            const budget = parseFloat((cells[budgetIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
-            const actual = parseFloat((cells[actualIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
-            const forecast = parseFloat((cells[forecastIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
-            const actualForecast = parseFloat((cells[actualForecastIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
-            
-            // Calculate variance based on selected formula
-            let variance = 0;
-            if (budget != 0) {
-              if (formula === 'budget_vs_actual_forecast') {
-                // Use (Budget - (Actual + Forecast)) / Budget * 100
-                variance = (((budget - actualForecast) / budget) * 100);
-              } else {
-                // Default: (Budget - Actual) / Budget * 100
-                variance = (((budget - actual) / budget) * 100);
-              }
-            }
-            
-            let varianceClass = 'variance-zero';
-            if (variance > 0) varianceClass = 'variance-positive';
-            else if (variance < 0) varianceClass = 'variance-negative';
-            
-            // Update variance cell
-            if (cells[varianceIndex]) {
-              cells[varianceIndex].innerHTML = `<span class="${varianceClass}">${variance.toFixed(2)}%</span>`;
-            }
-          }
-        });
-        
-        // Recalculate Grand Total
-        calculateTable1GrandTotal();
-      }
-      
-      // Update variances in Table 2
-      function updateTable2Variances(formula) {
-        const table = document.querySelector('#section3-table .vertical-table');
-        if (!table) return;
-        
-        // Update all rows in Table 2
-        const rows = table.querySelectorAll('tbody tr:not(.grand-total-section)');
-        rows.forEach(row => {
-          const annualBudgetCell = row.querySelector('td[data-label="Annual Budget"]');
-          const actualForecastCell = row.querySelector('td[data-label="Actual + Forecast"]');
-          const varianceCell = row.querySelector('td[data-label="Variance"]');
-          
-          if (annualBudgetCell && actualForecastCell && varianceCell) {
-            const annualBudget = parseFloat(annualBudgetCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            const actualForecast = parseFloat(actualForecastCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            
-            // For Table 2, we need to extract actual values from Q3 and Q4
-            let actual = 0;
-            const q3ActualCell = row.querySelector('td[data-label="Q3 Actual"]');
-            const q4ActualCell = row.querySelector('td[data-label="Q4 Actual"]');
-            
-            if (q3ActualCell) {
-              actual += parseFloat(q3ActualCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            }
-            if (q4ActualCell) {
-              actual += parseFloat(q4ActualCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            }
-            
-            // Calculate variance based on selected formula
-            let variance = 0;
-            if (annualBudget != 0) {
-              if (formula === 'budget_vs_actual_forecast') {
-                // Use (Budget - (Actual + Forecast)) / Budget * 100
-                variance = (((annualBudget - actualForecast) / annualBudget) * 100);
-              } else {
-                // Default: (Budget - Actual) / Budget * 100
-                variance = (((annualBudget - actual) / annualBudget) * 100);
-              }
-            }
-            
-            let varianceClass = 'variance-zero';
-            if (variance > 0) varianceClass = 'variance-positive';
-            else if (variance < 0) varianceClass = 'variance-negative';
-            
-            // Update variance cell
-            varianceCell.innerHTML = `<span class="${varianceClass}">${variance.toFixed(2)}%</span>`;
-          }
-        });
-        
-        // Recalculate Grand Total for Table 2
-        if (typeof calculateTable2GrandTotal === 'function') {
-          calculateTable2GrandTotal();
-        }
-      }
+  let csvRows = [];
+  // Get headers
+  const headers = Array.from(table.querySelectorAll('thead tr')).map(tr =>
+    Array.from(tr.querySelectorAll('th')).map(th => th.textContent.trim())
+  );
+  headers.forEach(headerRow => csvRows.push(headerRow.join(',')));
+
+  // Get all rows including Grand Total
+  const rows = table.querySelectorAll('tbody tr');
+  rows.forEach(row => {
+    const cells = Array.from(row.querySelectorAll('td')).map(td => {
+      // Remove commas from cell text to avoid CSV issues
+      return td.textContent.replace(/,/g, '');
     });
+    csvRows.push(cells.join(','));
+  });
+
+  // Create CSV string
+  const csvString = csvRows.join('\r\n');
+
+  // Download CSV
+  const blob = new Blob([csvString], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'Budget_Data_Table2.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
 
     // Update metric cards based on Table 1 data
     function updateMetricCardsFromTable1() {
@@ -3240,7 +3207,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     document.addEventListener('DOMContentLoaded', function() {
-  function fillTable2AnnualTotals() {
+  // Expose function globally so other listeners (like variance toggle) can call it
+  window.fillTable2AnnualTotals = function() {
     const table = document.querySelector('#section3-table .vertical-table');
     if (!table) return;
 
@@ -3260,21 +3228,13 @@ document.addEventListener('DOMContentLoaded', function() {
       const annualBudget = q3Budget + q4Budget + q1Budget + q2Budget;
       const actualForecast = q3Actual + q4Actual + q1Forecast + q2Forecast;
 
-      // Get selected variance formula
-      const varianceFormula = document.getElementById('varianceFormula').value;
-      
-      // Calculate variance based on selected formula
+      // Calculate variance using selected formula
       let variance = 0;
       if (annualBudget !== 0) {
-        if (varianceFormula === 'budget_vs_actual_forecast') {
-          // Use (Budget - (Actual + Forecast)) / Budget * 100
-          variance = ((annualBudget - actualForecast) / annualBudget) * 100;
-        } else {
-          // Default: (Budget - Actual) / Budget * 100
-          // Calculate actual total from Q3 and Q4 actuals only
-          const actualTotal = q3Actual + q4Actual;
-          variance = ((annualBudget - actualTotal) / annualBudget) * 100;
-        }
+        const actualOnly = q3Actual + q4Actual;
+        const actualPlusForecast = q3Actual + q4Actual + q1Forecast + q2Forecast;
+        const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? actualPlusForecast : actualOnly;
+        variance = ((annualBudget - compareAgainst) / annualBudget) * 100;
       }
       let varianceClass = 'variance-zero';
       if (variance > 0) varianceClass = 'variance-positive';
@@ -3287,7 +3247,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  fillTable2AnnualTotals();
+  window.fillTable2AnnualTotals();
   // Recalculate if table changes (add listeners if needed)
 });
   </script>
