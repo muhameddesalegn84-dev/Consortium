@@ -1670,23 +1670,6 @@ if (!$included):
 
         <div class="filter-section">
           <div class="filter-title">
-            <i class="fas fa-percent"></i> Variance Formula
-          </div>
-          <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
-            <label style="display: flex; align-items: center; gap: 6px;">
-              <input type="radio" name="varianceFormula" value="budget_actual" checked>
-              <span>Budget vs Actual (Default)</span>
-            </label>
-            <label style="display: flex; align-items: center; gap: 6px;">
-              <input type="radio" name="varianceFormula" value="budget_actual_forecast">
-              <span>Budget vs Actual + Forecast</span>
-            </label>
-            <button type="button" id="applyVarianceBtn" class="btn-primary"><i class="fas fa-check"></i> Apply</button>
-          </div>
-        </div>
-
-        <div class="filter-section">
-          <div class="filter-title">
             <i class="fas fa-table"></i> Select Table View
           </div>
           <div class="relative">
@@ -3266,3 +3249,4 @@ document.addEventListener('DOMContentLoaded', function() {
   </script>
 </body>
 </html>
+
