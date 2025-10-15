@@ -2895,74 +2895,36 @@ document.addEventListener('DOMContentLoaded', function() {
       window.calculateTable2GrandTotal = function() {
         const table = document.querySelector('#section3-table .vertical-table');
         if (!table) return;
-        
-        // Initialize totals for all columns
-        let q3BudgetTotal = 0, q3ActualTotal = 0;
-        let q4BudgetTotal = 0, q4ActualTotal = 0;
-        let q1BudgetTotal = 0, q1ForecastTotal = 0;
-        let q2BudgetTotal = 0, q2ForecastTotal = 0;
-        let annualBudgetTotal = 0, actualForecastTotal = 0;
+
+        // Initialize totals using displayed columns only
+        let q3BudgetTotal = 0, q4BudgetTotal = 0, q1BudgetTotal = 0, q2BudgetTotal = 0;
+        let actualOnlyTotal = 0, displayedAFTotal = 0;
+        let annualBudgetTotal = 0;
 
         // Find all rows except the header and Grand Total
         const rows = table.querySelectorAll('tbody tr:not(.grand-total-section)');
         rows.forEach(row => {
-          // Q3 data
-          const q3BudgetCell = row.querySelector('td[data-label="Q3 Budget"]');
-          const q3ActualCell = row.querySelector('td[data-label="Q3 Actual"]');
-          if (q3BudgetCell && q3ActualCell) {
-            const q3Budget = parseFloat(q3BudgetCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            const q3Actual = parseFloat(q3ActualCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            q3BudgetTotal += q3Budget;
-            q3ActualTotal += q3Actual;
-          }
-          
-          // Q4 data
-          const q4BudgetCell = row.querySelector('td[data-label="Q4 Budget"]');
-          const q4ActualCell = row.querySelector('td[data-label="Q4 Actual"]');
-          if (q4BudgetCell && q4ActualCell) {
-            const q4Budget = parseFloat(q4BudgetCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            const q4Actual = parseFloat(q4ActualCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            q4BudgetTotal += q4Budget;
-            q4ActualTotal += q4Actual;
-          }
-          
-          // Q1 data
-          const q1BudgetCell = row.querySelector('td[data-label="Q1 Budget"]');
-          const q1ForecastCell = row.querySelector('td[data-label="Q1 Forecast"]');
-          if (q1BudgetCell && q1ForecastCell) {
-            const q1Budget = parseFloat(q1BudgetCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            const q1Forecast = parseFloat(q1ForecastCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            q1BudgetTotal += q1Budget;
-            q1ForecastTotal += q1Forecast;
-          }
-          
-          // Q2 data
-          const q2BudgetCell = row.querySelector('td[data-label="Q2 Budget"]');
-          const q2ForecastCell = row.querySelector('td[data-label="Q2 Forecast"]');
-          if (q2BudgetCell && q2ForecastCell) {
-            const q2Budget = parseFloat(q2BudgetCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            const q2Forecast = parseFloat(q2ForecastCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            q2BudgetTotal += q2Budget;
-            q2ForecastTotal += q2Forecast;
-          }
-          
-          // Annual totals (for variance calculation)
-          const annualBudgetCell = row.querySelector('td[data-label="Annual Budget"]');
-          const actualForecastCell = row.querySelector('td[data-label="Actual + Forecast"]');
-          if (annualBudgetCell && actualForecastCell) {
-            const annualBudget = parseFloat(annualBudgetCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            const actualForecast = parseFloat(actualForecastCell.textContent.replace(/[^0-9.-]/g, '')) || 0;
-            annualBudgetTotal += annualBudget;
-            actualForecastTotal += actualForecast;
-          }
+          const q3Budget = parseFloat((row.querySelector('td[data-label="Q3 Budget"]')?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+          const q4Budget = parseFloat((row.querySelector('td[data-label="Q4 Budget"]')?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+          const q1Budget = parseFloat((row.querySelector('td[data-label="Q1 Budget"]')?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+          const q2Budget = parseFloat((row.querySelector('td[data-label="Q2 Budget"]')?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+          q3BudgetTotal += q3Budget; q4BudgetTotal += q4Budget; q1BudgetTotal += q1Budget; q2BudgetTotal += q2Budget;
+          annualBudgetTotal += (q3Budget + q4Budget + q1Budget + q2Budget);
+
+          ['Q3','Q4','Q1','Q2'].forEach(q => {
+            const actualCell = row.querySelector(`td[data-label="${q} Actual"]`);
+            const forecastCell = row.querySelector(`td[data-label="${q} Forecast"]`);
+            const actualVal = actualCell ? (parseFloat(actualCell.textContent.replace(/[^0-9.-]/g, '')) || 0) : 0;
+            const forecastVal = forecastCell ? (parseFloat(forecastCell.textContent.replace(/[^0-9.-]/g, '')) || 0) : 0;
+            if (actualCell) actualOnlyTotal += actualVal;
+            displayedAFTotal += actualCell ? actualVal : forecastVal;
+          });
         });
 
         // Calculate variance using selected formula
         let variance = 0;
-        if (annualBudgetTotal != 0) {
-          const actualOnly = q3ActualTotal + q4ActualTotal;
-          const actualPlusForecast = actualForecastTotal; // already Q3A+Q4A+Q1F+Q2F
-          const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? actualPlusForecast : actualOnly;
+        if (annualBudgetTotal !== 0) {
+          const compareAgainst = (varianceFormula === 'budget_actual_forecast') ? displayedAFTotal : actualOnlyTotal;
           variance = (((annualBudgetTotal - compareAgainst) / annualBudgetTotal) * 100);
         }
 
@@ -2984,15 +2946,18 @@ document.addEventListener('DOMContentLoaded', function() {
         grandTotalRow.innerHTML = `
           <td class="grand-total-label">Grand Total</td>
           <td>${q3BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${q3ActualTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td>${(function(){
+            // Sum displayed value for Q3 second column (Actual if present else Forecast)
+            let sum = 0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q3 Actual"]'); const f=row.querySelector('td[data-label="Q3 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum;
+          })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${q4BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${q4ActualTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td>${(function(){ let sum=0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q4 Actual"]'); const f=row.querySelector('td[data-label="Q4 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum; })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${q1BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${q1ForecastTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td>${(function(){ let sum=0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q1 Actual"]'); const f=row.querySelector('td[data-label="Q1 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum; })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${q2BudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${q2ForecastTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td>${(function(){ let sum=0; rows.forEach(row=>{ const a=row.querySelector('td[data-label="Q2 Actual"]'); const f=row.querySelector('td[data-label="Q2 Forecast"]'); sum += parseFloat((a?a:f)?.textContent.replace(/[^0-9.-]/g,'')||0)||0; }); return sum; })().toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td>${annualBudgetTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
-          <td>${actualForecastTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+          <td>${displayedAFTotal.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
           <td><span class="${varianceClass}">${variance.toFixed(2)}%</span></td>
         `;
         table.querySelector('tbody').appendChild(grandTotalRow);
