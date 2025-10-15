@@ -2874,9 +2874,10 @@ document.addEventListener('DOMContentLoaded', function() {
       r.addEventListener('change', () => {
         varianceFormula = r.value;
         // Recompute variances on both tables
+        if (typeof window.recalculateTable1RowVariances === 'function') window.recalculateTable1RowVariances();
         if (typeof window.calculateTable1GrandTotal === 'function') window.calculateTable1GrandTotal();
-        if (typeof window.calculateTable2GrandTotal === 'function') window.calculateTable2GrandTotal();
         if (typeof window.fillTable2AnnualTotals === 'function') window.fillTable2AnnualTotals();
+        if (typeof window.calculateTable2GrandTotal === 'function') window.calculateTable2GrandTotal();
       });
     });
 
@@ -3075,6 +3076,54 @@ document.addEventListener('DOMContentLoaded', function() {
 
       window.calculateTable1GrandTotal();
       // Recalculate if table changes (add listeners if needed)
+    });
+
+    // Front-end recalculation of all per-row variances in Table 1 (Section 2)
+    document.addEventListener('DOMContentLoaded', function() {
+      // Expose function globally to respond to variance toggle
+      window.recalculateTable1RowVariances = function() {
+        const table = document.querySelector('#section2-table .vertical-table');
+        if (!table) return;
+
+        const rows = table.querySelectorAll('tbody tr');
+        rows.forEach(row => {
+          // Skip dynamically injected Grand Total row
+          if (row.classList.contains('grand-total-section')) return;
+
+          const cells = Array.from(row.querySelectorAll('td'));
+          if (cells.length === 0) return;
+
+          const hasCategoryCell = (cells.length === 7); // Category + Period + 4 metrics + Variance
+          const budgetIndex = hasCategoryCell ? 2 : 1;
+          const actualIndex = hasCategoryCell ? 3 : 2;
+          const forecastIndex = hasCategoryCell ? 4 : 3;
+          const varianceIndex = hasCategoryCell ? 6 : 5;
+
+          const budget = parseFloat((cells[budgetIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+          const actual = parseFloat((cells[actualIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+          const forecast = parseFloat((cells[forecastIndex]?.textContent || '').replace(/[^0-9.-]/g, '')) || 0;
+
+          let variance = 0;
+          if (budget !== 0) {
+            const compareAgainst = (typeof varianceFormula !== 'undefined' && varianceFormula === 'budget_actual_forecast')
+              ? (actual + forecast)
+              : actual;
+            variance = ((budget - compareAgainst) / budget) * 100;
+          }
+
+          let varianceClass = 'variance-zero';
+          if (variance > 0) varianceClass = 'variance-positive';
+          else if (variance < 0) varianceClass = 'variance-negative';
+
+          cells[varianceIndex].innerHTML = `<span class="${varianceClass}">${variance.toFixed(2)}%</span>`;
+        });
+
+        // After updating per-row variances, refresh dynamic Grand Total
+        if (typeof window.calculateTable1GrandTotal === 'function') window.calculateTable1GrandTotal();
+      };
+
+      // Run once on load to ensure backend variance values are overridden by front-end calculation
+      if (typeof window.recalculateTable1RowVariances === 'function') window.recalculateTable1RowVariances();
     });
 
     function getTable2ExportData() {
