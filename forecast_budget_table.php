@@ -1679,6 +1679,7 @@ if (!$included):
               <input type="radio" name="varianceFormula" value="budget_actual_forecast">
               <span>Budget vs Actual + Forecast</span>
             </label>
+            <button type="button" id="applyVarianceBtn" class="btn-primary"><i class="fas fa-check"></i> Apply</button>
           </div>
         </div>
 
@@ -2873,12 +2874,19 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('input[name="varianceFormula"]').forEach(r => {
       r.addEventListener('change', () => {
         varianceFormula = r.value;
-        // Recompute variances on both tables
-        if (typeof window.recalculateTable1RowVariances === 'function') window.recalculateTable1RowVariances();
-        if (typeof window.calculateTable1GrandTotal === 'function') window.calculateTable1GrandTotal();
-        if (typeof window.fillTable2AnnualTotals === 'function') window.fillTable2AnnualTotals();
-        if (typeof window.calculateTable2GrandTotal === 'function') window.calculateTable2GrandTotal();
+        // Do not auto-recalculate here; Apply button handles Section 3 updates
       });
+    });
+
+    // Apply button to recalculate ONLY Section 3 (Table 2)
+    document.addEventListener('DOMContentLoaded', function() {
+      const applyVarianceBtn = document.getElementById('applyVarianceBtn');
+      if (applyVarianceBtn) {
+        applyVarianceBtn.addEventListener('click', function() {
+          if (typeof window.fillTable2AnnualTotals === 'function') window.fillTable2AnnualTotals();
+          if (typeof window.calculateTable2GrandTotal === 'function') window.calculateTable2GrandTotal();
+        });
+      }
     });
 
     // Front-end Grand Total calculation for Table 2
@@ -2995,7 +3003,11 @@ document.addEventListener('DOMContentLoaded', function() {
       window.calculateTable2GrandTotal();
       document.getElementById('tableSelection').addEventListener('change', function() {
         if (this.value === 'section3') {
-          setTimeout(window.calculateTable2GrandTotal, 100); // Wait for table to show
+          // Ensure per-row totals are refreshed before grand total when switching to Section 3
+          setTimeout(function() {
+            if (typeof window.fillTable2AnnualTotals === 'function') window.fillTable2AnnualTotals();
+            if (typeof window.calculateTable2GrandTotal === 'function') window.calculateTable2GrandTotal();
+          }, 100);
         }
       });
       
@@ -3297,6 +3309,7 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   window.fillTable2AnnualTotals();
+  if (typeof window.calculateTable2GrandTotal === 'function') window.calculateTable2GrandTotal();
   // Recalculate if table changes (add listeners if needed)
 });
   </script>
